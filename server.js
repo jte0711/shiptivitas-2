@@ -114,22 +114,86 @@ app.get('/api/v1/clients/:id', (req, res) => {
  *      priority (optional): integer,
  *
  */
+
+const updateNewLane = (client, clientsArr) =>{
+  let newLane = clientsArr.filter(cl => cl.status == client.status && cl.priority >= client.priority && cl.id !== client.id);
+  let newClientsArr = clientsArr.filter (cl => cl.status !== client.status || cl.priority < client.priority);
+  //check if priorities no more than status array length and adjust it
+
+  newLane.forEach(el => el.priority += 1);
+  if (newLane.length === 0){
+    client.priority = clientsArr.filter(cl => cl.status == client.status && cl.id !== client.id).length+1;
+  }
+  newClientsArr = newClientsArr.concat(newLane).concat(client);
+
+  // return [newLane, newLane.length];
+  return newClientsArr;
+};
+
+const updatePrevLane = (id, clientsArr, prevStatus, prevPriority) => {
+
+  //remove the prevClient from array
+    // find it's index
+    // splice it (delete)
+  //update the priority 
+
+  let newArr = clientsArr.filter(cl => cl.status !== prevStatus);
+  let prevLane = clientsArr.filter(cl => cl.status === prevStatus && cl.id !== id);
+  
+  prevLane.forEach( (el) =>{
+    if (el.priority > prevPriority){
+      el.priority -= 1;
+    }
+  });
+
+  newArr = newArr.concat(prevLane);
+
+  return newArr;  
+}
+
 app.put('/api/v1/clients/:id', (req, res) => {
-  const id = parseInt(req.params.id , 10);
-  const { valid, messageObj } = validateId(id);
+  const id = parseInt(req.params.id , 10);  //get id
+  const { valid, messageObj } = validateId(id); //check validness
   if (!valid) {
     res.status(400).send(messageObj);
   }
 
-  let { status, priority } = req.body;
+  let { status, priority } = req.body;  //get status and priority, put this as the new status and priority
   let clients = db.prepare('select * from clients').all();
-  const client = clients.find(client => client.id === id);
+  const client = clients.find(client => client.id === id); //client which we will update
 
   /* ---------- Update code below ----------*/
 
+  //retain client previous status and priority
+  let prevStatus = client.status;
+  let prevPriority = client.priority;
+  
+  //update the client with new status and priority
+  client.status = status;
+  client.priority = priority;
 
+  let result = updatePrevLane(client.id, clients, prevStatus, prevPriority);
+  // res.send({test: result});
+  result = updateNewLane(client, result);
 
-  return res.status(200).send(clients);
+  result.sort((a,b)=>{
+    return a.id - b.id;
+  });
+
+  // get the list of clients with target status and list of client with previous status
+  // find priority which has the same number as client, change it +1 and to the priority following it (use filter)
+  // find priority which has +1 of the previous priority then -1 it's and the following clients
+  // add new client to the array
+  // save
+  // send back the full clients result
+
+  // let test = result.filter(cl => cl.status === status);
+  // test.sort((a,b)=>{
+  //   return a.priority - b.priority;
+  // });
+
+  return res.send({result: result});
+  // return res.status(200).send(clients);
 });
 
 app.listen(3001);
