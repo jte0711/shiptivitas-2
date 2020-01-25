@@ -1,5 +1,6 @@
 import express from 'express';
 import Database from 'better-sqlite3';
+import fs from 'fs';
 
 const app = express();
 
@@ -117,33 +118,51 @@ app.get('/api/v1/clients/:id', (req, res) => {
 
 const updateNewLane = (client, clientsArr) =>{
   let newLane = clientsArr.filter(cl => cl.status == client.status && cl.priority >= client.priority && cl.id !== client.id);
-  let newClientsArr = clientsArr.filter (cl => cl.status !== client.status || cl.priority < client.priority);
-  //check if priorities no more than status array length and adjust it
+  let newClientsArr = clientsArr.filter (cl => cl.status !== client.status || cl.priority < client.priority || cl.id === client.id);
+  const statement1 = db.prepare("UPDATE clients SET priority = (@priority), status = (@status) WHERE id=(@id);");
+  const statement2 = db.prepare("UPDATE clients SET priority = (@priority) WHERE id=(@id);");
 
-  newLane.forEach(el => el.priority += 1);
+  //check if priorities no more than status array length and adjust it
+  newLane.forEach((el) =>{
+    el.priority += 1
+    statement2.run({
+      priority: el.priority,
+      id: el.id
+    });
+  });
+
   if (newLane.length === 0){
     client.priority = clientsArr.filter(cl => cl.status == client.status && cl.id !== client.id).length+1;
   }
+
+  statement1.run({
+    priority: client.priority,
+    status: client.status,
+    id: client.id
+  });
+
   newClientsArr = newClientsArr.concat(newLane).concat(client);
 
-  // return [newLane, newLane.length];
   return newClientsArr;
 };
 
-const updatePrevLane = (id, clientsArr, prevStatus, prevPriority) => {
+const updatePrevLane = (client, clientsArr) => {
 
   //remove the prevClient from array
     // find it's index
     // splice it (delete)
   //update the priority 
 
-  let newArr = clientsArr.filter(cl => cl.status !== prevStatus);
-  let prevLane = clientsArr.filter(cl => cl.status === prevStatus && cl.id !== id);
-  
+  let newArr = clientsArr.filter(cl => cl.status !== client.status || cl.priority < client.priority);
+  let prevLane = clientsArr.filter(cl => cl.status === client.status && cl.id !== client.id && cl.priority > client.priority);
+  const statement = db.prepare("UPDATE clients SET priority = (@priority) WHERE id=(@id);");
+
   prevLane.forEach( (el) =>{
-    if (el.priority > prevPriority){
-      el.priority -= 1;
-    }
+    el.priority -= 1;
+    statement.run({
+      priority: el.priority,
+      id: el.id
+    });
   });
 
   newArr = newArr.concat(prevLane);
@@ -167,13 +186,13 @@ app.put('/api/v1/clients/:id', (req, res) => {
   //retain client previous status and priority
   let prevStatus = client.status;
   let prevPriority = client.priority;
-  
+
+  let result = updatePrevLane(client, clients);
+
   //update the client with new status and priority
   client.status = status;
   client.priority = priority;
 
-  let result = updatePrevLane(client.id, clients, prevStatus, prevPriority);
-  // res.send({test: result});
   result = updateNewLane(client, result);
 
   result.sort((a,b)=>{
@@ -184,16 +203,19 @@ app.put('/api/v1/clients/:id', (req, res) => {
   // find priority which has the same number as client, change it +1 and to the priority following it (use filter)
   // find priority which has +1 of the previous priority then -1 it's and the following clients
   // add new client to the array
-  // save
   // send back the full clients result
 
-  // let test = result.filter(cl => cl.status === status);
-  // test.sort((a,b)=>{
-  //   return a.priority - b.priority;
-  // });
+  // ----- UPDATE DATABASE ------
+  // 1. in updatePrevLane, loop through and use prepare to (update one client at a time)
+  // 2. in updateNewLane, loop through and use prepare to (update one client at a time)
 
-  return res.send({result: result});
-  // return res.status(200).send(clients);
+  return res.status(200).send(result);
+});
+
+app.put('/api/v1/clients', (req, res) => {
+  const renew = fs.readFileSync('clients.sql', 'utf8');
+  db.exec(renew);
+  return res.status(200).send("Database Renewed");
 });
 
 app.listen(3001);
