@@ -183,10 +183,6 @@ app.put('/api/v1/clients/:id', (req, res) => {
 
   /* ---------- Update code below ----------*/
 
-  //retain client previous status and priority
-  let prevStatus = client.status;
-  let prevPriority = client.priority;
-
   let result = updatePrevLane(client, clients);
 
   //update the client with new status and priority
